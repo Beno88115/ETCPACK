@@ -217,6 +217,7 @@ int verbose = true;
 extern int formatSigned;
 int ktxFile=0;
 bool first_time_message = true;
+bool premultiplyAlpha = false;
 
 static int scramble[4] = {3, 2, 0, 1};
 static int unscramble[4] = {2, 3, 1, 0};
@@ -715,6 +716,19 @@ void readArguments(int argc,char *argv[],char* src,char *dst)
 				mode=MODE_PSNR;
 				i--; //ugly way of negating the increment of i done later because -p doesn't have an argument.
 			}
+            else if(!strcmp(argv[i],"-premultiplyAlpha"))
+            {
+                // We have argument -premultiplyAlpha. Now check for slow, medium or fast.
+                if(!strcmp(argv[i+1],"off"))
+                    premultiplyAlpha = false;
+                else if(!strcmp(argv[i+1],"on"))
+                    premultiplyAlpha = true;
+                else
+                {
+                    printf("Error: %s not part of flag %s\n",argv[i+1], argv[i]);
+                    exit(1);
+                }
+            }
 			else 
 			{
 				printf("Error: cannot interpret flag %s %s\n",argv[i], argv[i+1]);
@@ -15882,7 +15896,7 @@ void compressFile(char *srcfile,char *dstfile)
 	uint8 *srcimg;
 	int width,height;
 	int extendedwidth, extendedheight;
-	struct _timeb tstruct;
+	struct timeb tstruct;
 	int tstart;
 	int tstop;
 	// 0: compress from .any to .pkm with SPEED_FAST, METRIC_NONPERCEPTUAL, ETC 
@@ -15947,6 +15961,20 @@ void compressFile(char *srcfile,char *dstfile)
 				readAlpha(alphaimg,width,height,extendedwidth,extendedheight);
 				printf("ok!\n");
 				setupAlphaTableAndValtab();
+                
+                // premultiply alpha
+                if (premultiplyAlpha)
+                {
+                    for (int i = 0; i < extendedwidth * extendedheight; ++i)
+                    {
+                        uint8* rgb = srcimg + i * 3;
+                        uint8* alpha = alphaimg + i;
+                        
+                        rgb[0] = rgb[0] * (alpha[0] + 1) >> 8;
+                        rgb[1] = rgb[1] * (alpha[0] + 1) >> 8;
+                        rgb[2] = rgb[2] * (alpha[0] + 1) >> 8;
+                    }
+                }
 			}
 			else if(format==ETC2PACKAGE_R_NO_MIPMAPS) 
 			{
@@ -15960,11 +15988,11 @@ void compressFile(char *srcfile,char *dstfile)
 			printf("Compressing...\n");
 
 			tstart=time(NULL);
-			_ftime( &tstruct );
+			ftime( &tstruct );
 			tstart=tstart*1000+tstruct.millitm;
 			compressImageFile(srcimg,alphaimg,width,height,dstfile,extendedwidth, extendedheight);			
 			tstop = time(NULL);
-			_ftime( &tstruct );
+			ftime( &tstruct );
 			tstop = tstop*1000+tstruct.millitm;
 			printf( "It took %u milliseconds to compress:\n", tstop - tstart);
 			calculatePSNRfile(dstfile,srcimg,alphaimg);
@@ -16015,15 +16043,12 @@ double calculatePSNRTwoFiles(char *srcfile1,char *srcfile2)
 // NO WARRANTY --- SEE STATEMENT IN TOP OF FILE (C) Ericsson AB 2005-2013. All Rights Reserved.
 int main(int argc,char *argv[])
 {
-	if(argc==3 || argc==4 || argc == 5 || argc == 7 || argc == 9 || argc == 11 || argc == 13)
+	if(argc==3 || argc==4 || argc == 5 || argc == 7 || argc == 9 || argc == 11 || argc == 13 || argc == 15)
 	{
 		// The source file is always the second last one. 
 		char srcfile[200];
 		char dstfile[200];
 		readArguments(argc,argv,srcfile,dstfile);
-		
-		int q = find_pos_of_extension(srcfile);
-		int q2 = find_pos_of_extension(dstfile);
 		
 		if(!fileExist(srcfile))
 		{
@@ -16067,6 +16092,9 @@ int main(int argc,char *argv[])
 		printf("                                         (1 equals punchthrough)\n");
 		printf("                                         (default: RGB)\n");
 		printf("      -v {on|off}                        Detailed progress info. (default on)\n");
+        printf("      -premultiplyAlpha {on|off}         Run a preprocess over the image that scales RGB components \n");
+        printf("                                         in the image by the alpha value. ");
+        printf("                                         (default: off)\n");
 		printf("                                                            \n");
 		printf("Examples: \n");
 		printf("  etcpack img.ppm img.pkm                Compresses img.ppm to img.pkm in\n"); 
